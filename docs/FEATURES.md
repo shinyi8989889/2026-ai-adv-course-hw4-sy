@@ -8,13 +8,14 @@
 | 商品瀏覽 | ✅ 完成 | 公開商品列表與詳情 |
 | 購物車管理 | ✅ 完成 | 雙模式認證（JWT / Session ID），登入時合併訪客購物車 |
 | 配送費用 | ✅ 完成 | 宅配/超商、滿額免基本運費、偏遠/急件附加費 |
+| 優惠碼 | ✅ 完成 | 結帳可輸入優惠碼折抵商品小計（FLOWER100/SPRING10/SUMMER50） |
 | 訂單管理 | ✅ 完成 | 建立、查詢、模擬付款（僅測試環境） |
 | 綠界金流串接 | ✅ 完成 | ECPay AIO 付款、QueryTradeInfo 查詢驗證 |
 | 後台商品管理 | ✅ 完成 | 商品 CRUD |
 | 後台訂單管理 | ✅ 完成 | 訂單查詢與狀態篩選 |
 | 前台頁面 | ✅ 完成 | EJS + Tailwind CSS |
 | 後台頁面 | ✅ 完成 | EJS + Tailwind CSS |
-| 測試 | ✅ 完成 | 55 項 Unit/API + 10 項 Integration + 1 項綠界真實付款 E2E |
+| 測試 | ✅ 完成 | 72 項 Unit/API + 10 項 Integration + 1 項綠界真實付款 E2E + 10 項 Issue A 驗收測試（優惠碼） |
 | API 文件 | ✅ 完成 | Swagger/OpenAPI 生成與 Postman Collection 自動轉換 |
 
 ---
@@ -237,6 +238,29 @@
 
 ---
 
+## 優惠碼（Issue A）
+
+### Coupon 工具模組（src/utils/coupon.js）
+
+**設計原則**：比照 Shipping 模組，不依賴 Express 或資料庫的純計算邏輯；三組優惠碼規則直接寫在模組內（本次不含後台管理）。
+
+| 優惠碼 | 折扣內容 | 使用條件 |
+|--------|----------|----------|
+| `FLOWER100` | 折抵 100 元 | 商品小計滿 800 元 |
+| `SPRING10` | 商品小計打 9 折，最多折抵 300 元 | 無門檻 |
+| `SUMMER50` | 折抵 50 元 | 已失效，不可使用 |
+
+**規則**：
+- 每張訂單最多使用 1 組優惠碼，優惠碼不分大小寫（統一轉大寫儲存）
+- 優惠只折抵商品小計，不折抵運費；折扣金額四捨五入至整數
+- 免運門檻（1,500 元）以**折扣後**的商品小計判斷
+- 訂單總額 = 商品小計 − 折扣 + 運費
+- 無效、已失效或未達門檻的優惠碼：`applyCoupon()` 回傳 `{ error, message }`，路由回 400，不建立訂單、不扣庫存、不清空購物車
+
+`applyCoupon(code, subtotal)` 未帶入優惠碼時回傳 `{ couponCode: null, discount: 0 }`；成功時回傳 `{ couponCode, discount }`。
+
+---
+
 ## 訂單管理
 
 > **認證模式**：全部需要 JWT（authMiddleware），不支援訪客下單。
@@ -255,6 +279,7 @@
 | shippingMethod | string | 是 | `home_delivery` 或 `convenience_store` |
 | isRemoteArea | boolean | 是 | 是否為偏遠地區 |
 | isExpress | boolean | 是 | 是否為當日急件 |
+| couponCode | string | 否 | 見「優惠碼」章節；不分大小寫 |
 
 **業務邏輯**：
 1. 驗證收件人欄位、Email 格式及配送條件
@@ -262,10 +287,11 @@
 3. 購物車為空 → 400 CART_EMPTY
 4. 逐品項檢查庫存，不足者收集名稱 → 400「以下商品庫存不足：名稱1, 名稱2」
 5. 依資料庫價格計算 `subtotal = Σ(price × quantity)`
-6. 調用 Shipping 模組計算 `shippingFee`，並得 `totalAmount = subtotal + shippingFee`
-7. 生成 `orderNo = ORD-YYYYMMDD-{5碼UUID大寫}`（日期採台北時間）
-8. **Transaction**：INSERT order（含配送快照） → INSERT order_items（快照名稱+價格） → UPDATE stock → DELETE cart_items
-9. 回傳 201 + 訂單詳情（含 `subtotal`、`shipping_fee`、`total_amount`）
+6. 呼叫 `applyCoupon(couponCode, subtotal)`：無效/已失效/未達門檻 → 400（錯誤碼見下表），否則取得 `discount`
+7. 調用 Shipping 模組，以 `subtotal - discount` 作為免運門檻判斷依據計算 `shippingFee`，並得 `totalAmount = (subtotal - discount) + shippingFee`
+8. 生成 `orderNo = ORD-YYYYMMDD-{5碼UUID大寫}`（日期採台北時間）
+9. **Transaction**：INSERT order（含配送快照、`coupon_code`、`discount`） → INSERT order_items（快照名稱+價格） → UPDATE stock → DELETE cart_items
+10. 回傳 201 + 訂單詳情（含 `subtotal`、`discount`、`coupon_code`、`shipping_fee`、`total_amount`）
 
 **錯誤情境**：
 
@@ -276,6 +302,8 @@
 | 400 | VALIDATION_ERROR | 配送方式不支援，或偏遠/急件旗標非 boolean |
 | 400 | CART_EMPTY | 購物車為空 |
 | 400 | STOCK_INSUFFICIENT | 庫存不足（訊息中列出所有不足商品名稱） |
+| 400 | INVALID_COUPON | 優惠碼不存在或已失效 |
+| 400 | COUPON_THRESHOLD_NOT_MET | 商品小計未達優惠碼使用門檻 |
 
 ### GET /api/orders — 訂單列表
 
@@ -290,7 +318,7 @@
 **業務邏輯**：
 - 查詢條件含 `user_id`，他人訂單視為 404
 - order_items 中的 product_name / product_price 為下單時快照
-- `subtotal`、`shipping_fee`、配送方式與附加條件均為下單時快照
+- `subtotal`、`discount`、`coupon_code`、`shipping_fee`、配送方式與附加條件均為下單時快照
 
 **錯誤情境**：
 

@@ -16,6 +16,7 @@ const {
 } = require('../services/orderService');
 const { isTradePaid, markOrderPaid } = require('../services/paymentService');
 const { isNonEmptyString } = require('../utils/validators');
+const { applyCoupon } = require('../utils/coupon');
 
 const router = express.Router();
 
@@ -59,6 +60,9 @@ function testEnvOnly(req, res, next) {
  *                 type: boolean
  *               isExpress:
  *                 type: boolean
+ *               couponCode:
+ *                 type: string
+ *                 description: 選填，不分大小寫（FLOWER100、SPRING10；SUMMER50 已失效）
  *     responses:
  *       201:
  *         description: 訂單建立成功
@@ -76,6 +80,12 @@ function testEnvOnly(req, res, next) {
  *                       type: string
  *                     subtotal:
  *                       type: integer
+ *                     discount:
+ *                       type: integer
+ *                       description: 優惠碼折扣金額，未使用優惠碼時為 0
+ *                     coupon_code:
+ *                       type: string
+ *                       nullable: true
  *                     shipping_fee:
  *                       type: integer
  *                     shipping_method:
@@ -108,7 +118,7 @@ function testEnvOnly(req, res, next) {
  *                 message:
  *                   type: string
  *       400:
- *         description: 購物車為空或庫存不足或收件資訊缺失
+ *         description: 購物車為空或庫存不足或收件資訊缺失，或優惠碼無效/已失效/未達門檻
  */
 router.post('/', (req, res) => {
   const {
@@ -117,7 +127,8 @@ router.post('/', (req, res) => {
     recipientAddress,
     shippingMethod,
     isRemoteArea,
-    isExpress
+    isExpress,
+    couponCode
   } = req.body;
   const userId = req.user.userId;
 
@@ -178,8 +189,21 @@ router.post('/', (req, res) => {
   const subtotal = cartItems.reduce(
     (sum, item) => sum + item.product_price * item.quantity, 0
   );
+
+  // An optional coupon only discounts the subtotal; the free-shipping threshold
+  // is evaluated against the subtotal after the discount is applied.
+  const couponResult = applyCoupon(couponCode, subtotal);
+  if (couponResult.error) {
+    return res.status(400).json({
+      data: null,
+      error: couponResult.error,
+      message: couponResult.message
+    });
+  }
+  const { couponCode: resolvedCouponCode, discount } = couponResult;
+
   const shipping = calculateShipping({
-    subtotal,
+    subtotal: subtotal - discount,
     method: shippingMethod,
     isRemoteArea,
     isExpress
@@ -191,7 +215,9 @@ router.post('/', (req, res) => {
     delivery: { method: shippingMethod, isRemoteArea, isExpress },
     cartItems,
     subtotal,
-    shipping
+    shipping,
+    couponCode: resolvedCouponCode,
+    discount
   });
 
   const order = findOrderById(orderId);
@@ -202,6 +228,8 @@ router.post('/', (req, res) => {
       id: order.id,
       order_no: order.order_no,
       subtotal: order.subtotal,
+      discount: order.discount,
+      coupon_code: order.coupon_code,
       shipping_fee: order.shipping_fee,
       shipping_method: order.shipping_method,
       is_remote_area: Boolean(order.is_remote_area),
@@ -309,6 +337,12 @@ router.get('/', (req, res) => {
  *                       type: string
  *                     subtotal:
  *                       type: integer
+ *                     discount:
+ *                       type: integer
+ *                       description: 優惠碼折扣金額，未使用優惠碼時為 0
+ *                     coupon_code:
+ *                       type: string
+ *                       nullable: true
  *                     shipping_fee:
  *                       type: integer
  *                     shipping_method:
