@@ -7,6 +7,10 @@ if (require.main === module) {
     console.error('Fatal: JWT_SECRET is not set');
     process.exit(1);
   }
+  if (!process.env.ECPAY_MERCHANT_ID || !process.env.ECPAY_HASH_KEY || !process.env.ECPAY_HASH_IV) {
+    console.error('Fatal: ECPAY_MERCHANT_ID / ECPAY_HASH_KEY / ECPAY_HASH_IV is not set');
+    process.exit(1);
+  }
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });

@@ -26,7 +26,7 @@ describe('Shipping module', () => {
       expect(result.shippingFee).toBe(120);
     });
 
-    it.skip('商品小計 1,500 元時免基本運費', () => {
+    it('商品小計 1,500 元時免基本運費', () => {
       const result = calculateShipping({ subtotal: 1500, method: HOME_DELIVERY });
 
       expect(result.qualifiesForFreeShipping).toBe(true);

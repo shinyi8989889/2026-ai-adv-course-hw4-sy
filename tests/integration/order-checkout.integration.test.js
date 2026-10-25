@@ -432,7 +432,9 @@ describe('Order checkout integration flow', () => {
         MerchantTradeNo: merchantTradeNo,
         TradeAmt: '1',
         TradeStatus: '1'
-      })
+      }),
+      // Correct MerchantTradeNo/TradeAmt but no CheckMacValue at all (must not fail-open)
+      `MerchantID=${ECPAY_CONFIG.merchantId}&MerchantTradeNo=${merchantTradeNo}&TradeAmt=${order.total_amount}&TradeStatus=1`
     ];
 
     for (const body of forgedResponses) {

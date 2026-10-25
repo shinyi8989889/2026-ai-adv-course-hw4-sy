@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 
 const ECPAY_CONFIG = {
-  merchantId: process.env.ECPAY_MERCHANT_ID || '3002607',
-  hashKey: process.env.ECPAY_HASH_KEY || 'pwFHCqoQZGmho4w6',
-  hashIV: process.env.ECPAY_HASH_IV || 'EkRm7iFT261dpevs',
+  merchantId: process.env.ECPAY_MERCHANT_ID,
+  hashKey: process.env.ECPAY_HASH_KEY,
+  hashIV: process.env.ECPAY_HASH_IV,
   isStaging: (process.env.ECPAY_ENV || 'staging') !== 'production',
 };
 
