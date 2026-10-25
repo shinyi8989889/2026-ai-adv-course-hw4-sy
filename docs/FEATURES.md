@@ -9,13 +9,13 @@
 | 購物車管理 | ✅ 完成 | 雙模式認證（JWT / Session ID），登入時合併訪客購物車 |
 | 配送費用 | ✅ 完成 | 宅配/超商、滿額免基本運費、偏遠/急件附加費 |
 | 優惠碼 | ✅ 完成 | 結帳可輸入優惠碼折抵商品小計（FLOWER100/SPRING10/SUMMER50） |
-| 訂單管理 | ✅ 完成 | 建立、查詢、模擬付款（僅測試環境） |
+| 訂單管理 | ✅ 完成 | 建立、查詢（狀態篩選+分頁）、模擬付款（僅測試環境） |
 | 綠界金流串接 | ✅ 完成 | ECPay AIO 付款、QueryTradeInfo 查詢驗證 |
 | 後台商品管理 | ✅ 完成 | 商品 CRUD |
 | 後台訂單管理 | ✅ 完成 | 訂單查詢與狀態篩選 |
 | 前台頁面 | ✅ 完成 | EJS + Tailwind CSS |
 | 後台頁面 | ✅ 完成 | EJS + Tailwind CSS |
-| 測試 | ✅ 完成 | 72 項 Unit/API + 10 項 Integration + 1 項綠界真實付款 E2E + 10 項 Issue A 驗收測試（優惠碼） |
+| 測試 | ✅ 完成 | 75 項 Unit/API + 10 項 Integration + 1 項綠界真實付款 E2E + 10 項 Issue A（優惠碼）+ 7 項 Issue C（訂單篩選分頁）驗收測試 |
 | API 文件 | ✅ 完成 | Swagger/OpenAPI 生成與 Postman Collection 自動轉換 |
 
 ---
@@ -305,11 +305,33 @@
 | 400 | INVALID_COUPON | 優惠碼不存在或已失效 |
 | 400 | COUPON_THRESHOLD_NOT_MET | 商品小計未達優惠碼使用門檻 |
 
-### GET /api/orders — 訂單列表
+### GET /api/orders — 訂單列表（Issue C：狀態篩選與分頁）
 
-**行為描述**：回傳當前使用者的所有訂單，依建立時間降序排列。無分頁。
+**行為描述**：回傳當前使用者的訂單，依建立時間降序排列，支援狀態篩選與分頁。
 
-**回應欄位**：id, order_no, subtotal, shipping_fee, shipping_method, is_remote_area, is_express, total_amount, status, created_at
+**Query 參數**：
+
+| 參數 | 型別 | 必填 | 驗證規則 |
+|------|------|------|----------|
+| status | string | 否 | `pending`、`paid` 或 `failed`；不在允許值內回傳 400 |
+| page | integer | 否 | 預設 1；需為正整數，否則回傳 400 |
+| limit | integer | 否 | 預設 10；需為正整數，否則回傳 400；超過 50 以 50 計 |
+
+**業務邏輯**：
+- 只查詢當前使用者（`user_id`）自己的訂單，不會回傳他人訂單
+- `status` 有帶值時加上 `WHERE status = ?` 篩選
+- 分頁以 `LIMIT ? OFFSET ?` 實作，`offset = (page - 1) * limit`
+- `pagination.totalPages = Math.ceil(total / limit)`
+
+**回應欄位**：`orders`（id, order_no, subtotal, shipping_fee, shipping_method, is_remote_area, is_express, total_amount, status, created_at）、`pagination`（page, limit, total, totalPages）——回應格式沿用 `GET /api/admin/orders` 的慣例
+
+**錯誤情境**：
+
+| 狀態碼 | 錯誤碼 | 情境 |
+|--------|--------|------|
+| 400 | VALIDATION_ERROR | `status` 不在允許值內 |
+| 400 | VALIDATION_ERROR | `page` 不是正整數 |
+| 400 | VALIDATION_ERROR | `limit` 不是正整數 |
 
 ### GET /api/orders/:id — 訂單詳情
 

@@ -345,13 +345,44 @@
         }
       },
       "get": {
-        "summary": "自己的訂單列表",
+        "summary": "自己的訂單列表（支援狀態篩選與分頁）",
         "tags": [
           "Orders"
         ],
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "paid",
+                "failed"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "description": "最大 50，超過以 50 計"
+            }
           }
         ],
         "responses": {
@@ -396,6 +427,23 @@
                               }
                             }
                           }
+                        },
+                        "pagination": {
+                          "type": "object",
+                          "properties": {
+                            "page": {
+                              "type": "integer"
+                            },
+                            "limit": {
+                              "type": "integer"
+                            },
+                            "total": {
+                              "type": "integer"
+                            },
+                            "totalPages": {
+                              "type": "integer"
+                            }
+                          }
                         }
                       }
                     },
@@ -410,6 +458,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "status 不在允許值內，或 page/limit 不是正整數"
           }
         }
       }

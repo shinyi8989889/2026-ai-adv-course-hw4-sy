@@ -15,7 +15,7 @@ const {
   createOrderFromCart
 } = require('../services/orderService');
 const { isTradePaid, markOrderPaid } = require('../services/paymentService');
-const { isNonEmptyString } = require('../utils/validators');
+const { isNonEmptyString, parsePositiveInteger } = require('../utils/validators');
 const { applyCoupon } = require('../utils/coupon');
 
 const router = express.Router();
@@ -248,10 +248,27 @@ router.post('/', (req, res) => {
  * @openapi
  * /api/orders:
  *   get:
- *     summary: 自己的訂單列表
+ *     summary: 自己的訂單列表（支援狀態篩選與分頁）
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, paid, failed]
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           description: 最大 50，超過以 50 計
  *     responses:
  *       200:
  *         description: 成功
@@ -284,17 +301,61 @@ router.post('/', (req, res) => {
  *                             type: string
  *                           created_at:
  *                             type: string
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         page:
+ *                           type: integer
+ *                         limit:
+ *                           type: integer
+ *                         total:
+ *                           type: integer
+ *                         totalPages:
+ *                           type: integer
  *                 error:
  *                   type: string
  *                   nullable: true
  *                 message:
  *                   type: string
+ *       400:
+ *         description: status 不在允許值內，或 page/limit 不是正整數
  */
 router.get('/', (req, res) => {
-  const orders = listOrdersForUser(req.user.userId);
+  const { status } = req.query;
+
+  if (status !== undefined && !['pending', 'paid', 'failed'].includes(status)) {
+    return res.status(400).json({
+      data: null,
+      error: 'VALIDATION_ERROR',
+      message: 'status 必須為 pending、paid 或 failed'
+    });
+  }
+
+  let page = 1;
+  if (req.query.page !== undefined) {
+    const parsedPage = parsePositiveInteger(req.query.page);
+    if (parsedPage === null) {
+      return res.status(400).json({ data: null, error: 'VALIDATION_ERROR', message: 'page 必須為正整數' });
+    }
+    page = parsedPage;
+  }
+
+  let limit = 10;
+  if (req.query.limit !== undefined) {
+    const parsedLimit = parsePositiveInteger(req.query.limit);
+    if (parsedLimit === null) {
+      return res.status(400).json({ data: null, error: 'VALIDATION_ERROR', message: 'limit 必須為正整數' });
+    }
+    limit = Math.min(parsedLimit, 50);
+  }
+
+  const { orders, total } = listOrdersForUser(req.user.userId, { status, page, limit });
 
   res.json({
-    data: { orders: orders.map(serializeOrder) },
+    data: {
+      orders: orders.map(serializeOrder),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    },
     error: null,
     message: '成功'
   });

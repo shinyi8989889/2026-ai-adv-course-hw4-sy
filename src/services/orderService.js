@@ -26,12 +26,30 @@ function findOrderForUser(orderId, userId) {
   return db.prepare('SELECT * FROM orders WHERE id = ? AND user_id = ?').get(orderId, userId);
 }
 
-function listOrdersForUser(userId) {
-  return db.prepare(
-    `SELECT id, order_no, subtotal, shipping_fee, shipping_method,
+/**
+ * List a member's own orders with optional status filter and pagination.
+ * Returns { orders, total } so the caller can compute totalPages.
+ */
+function listOrdersForUser(userId, { status, page = 1, limit = 10 } = {}) {
+  let countSql = 'SELECT COUNT(*) as count FROM orders WHERE user_id = ?';
+  let querySql = `SELECT id, order_no, subtotal, shipping_fee, shipping_method,
             is_remote_area, is_express, total_amount, status, created_at
-     FROM orders WHERE user_id = ? ORDER BY created_at DESC`
-  ).all(userId);
+     FROM orders WHERE user_id = ?`;
+  const params = [userId];
+
+  if (status) {
+    countSql += ' AND status = ?';
+    querySql += ' AND status = ?';
+    params.push(status);
+  }
+
+  const total = db.prepare(countSql).get(...params).count;
+
+  querySql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  const offset = (page - 1) * limit;
+  const orders = db.prepare(querySql).all(...params, limit, offset);
+
+  return { orders, total };
 }
 
 function getOrderItems(orderId) {
