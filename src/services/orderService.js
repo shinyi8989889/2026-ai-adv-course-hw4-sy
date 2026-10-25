@@ -64,7 +64,7 @@ function findInsufficientItems(cartItems) {
  * insert order → snapshot items → deduct stock → clear cart.
  * Amounts must already be calculated by the caller.
  */
-function createOrderFromCart({ userId, recipient, delivery, cartItems, subtotal, shipping }) {
+function createOrderFromCart({ userId, recipient, delivery, cartItems, subtotal, shipping, couponCode = null, discount = 0 }) {
   const orderId = uuidv4();
   const orderNo = generateOrderNo();
   const merchantTradeNo = orderNo.replace(/-/g, '');
@@ -73,8 +73,8 @@ function createOrderFromCart({ userId, recipient, delivery, cartItems, subtotal,
     `INSERT INTO orders (
        id, order_no, user_id, recipient_name, recipient_email, recipient_address,
        subtotal, shipping_fee, shipping_method, is_remote_area, is_express,
-       total_amount, merchant_trade_no
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       coupon_code, discount, total_amount, merchant_trade_no
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const insertItem = db.prepare(
     `INSERT INTO order_items (id, order_id, product_id, product_name, product_price, quantity)
@@ -96,6 +96,8 @@ function createOrderFromCart({ userId, recipient, delivery, cartItems, subtotal,
       delivery.method,
       delivery.isRemoteArea ? 1 : 0,
       delivery.isExpress ? 1 : 0,
+      couponCode,
+      discount,
       shipping.totalAmount,
       merchantTradeNo
     );

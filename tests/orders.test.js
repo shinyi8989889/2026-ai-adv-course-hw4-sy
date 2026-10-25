@@ -169,6 +169,66 @@ describe('Orders API', () => {
     expect(res.body).toHaveProperty('error', 'VALIDATION_ERROR');
   });
 
+  it('should create an order with a valid coupon and apply the discount', async () => {
+    const { token } = await registerUser();
+    await request(app)
+      .post('/api/cart')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ productId, quantity: 1 });
+
+    const res = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        recipientName: '測試收件人',
+        recipientEmail: 'recipient@example.com',
+        recipientAddress: '台北市測試路 123 號',
+        shippingMethod: 'home_delivery',
+        isRemoteArea: false,
+        isExpress: false,
+        couponCode: 'spring10'
+      });
+
+    const expectedDiscount = Math.min(Math.round(productPrice * 0.1), 300);
+    expect(res.status).toBe(201);
+    expect(res.body.data).toHaveProperty('coupon_code', 'SPRING10');
+    expect(res.body.data).toHaveProperty('discount', expectedDiscount);
+    expect(res.body.data.total_amount).toBe(
+      res.body.data.subtotal - res.body.data.discount + res.body.data.shipping_fee
+    );
+
+    const detail = await request(app)
+      .get(`/api/orders/${res.body.data.id}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(detail.body.data).toHaveProperty('coupon_code', 'SPRING10');
+    expect(detail.body.data).toHaveProperty('discount', expectedDiscount);
+  });
+
+  it('should reject an order with an invalid coupon code', async () => {
+    const { token } = await registerUser();
+    await request(app)
+      .post('/api/cart')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ productId, quantity: 1 });
+
+    const res = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        recipientName: '測試收件人',
+        recipientEmail: 'recipient@example.com',
+        recipientAddress: '台北市測試路 123 號',
+        shippingMethod: 'home_delivery',
+        isRemoteArea: false,
+        isExpress: false,
+        couponCode: 'NOT-A-REAL-COUPON'
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('data', null);
+    expect(res.body).toHaveProperty('error', 'INVALID_COUPON');
+  });
+
   it('should hide mock payment outside the test environment', async () => {
     const originalEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'development';
