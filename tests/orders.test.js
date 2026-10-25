@@ -94,7 +94,7 @@ describe('Orders API', () => {
     expect(res.body.error).not.toBeNull();
   });
 
-  it('should get order list', async () => {
+  it('should get order list with default pagination', async () => {
     const res = await request(app)
       .get('/api/orders')
       .set('Authorization', `Bearer ${userToken}`);
@@ -105,6 +105,65 @@ describe('Orders API', () => {
     expect(res.body.data).toHaveProperty('orders');
     expect(Array.isArray(res.body.data.orders)).toBe(true);
     expect(res.body.data.orders.length).toBeGreaterThan(0);
+    expect(res.body.data.pagination).toMatchObject({ page: 1, limit: 10 });
+    expect(res.body.data.pagination.total).toBeGreaterThan(0);
+  });
+
+  it('should filter the order list by status and paginate', async () => {
+    const { token } = await registerUser();
+    for (let i = 0; i < 3; i++) {
+      await request(app)
+        .post('/api/cart')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ productId, quantity: 1 });
+      const createRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          recipientName: '測試收件人',
+          recipientEmail: 'recipient@example.com',
+          recipientAddress: '台北市測試路 123 號',
+          shippingMethod: 'home_delivery',
+          isRemoteArea: false,
+          isExpress: false,
+        });
+      expect(createRes.status).toBe(201);
+    }
+
+    const paged = await request(app)
+      .get('/api/orders?page=1&limit=2')
+      .set('Authorization', `Bearer ${token}`);
+    expect(paged.status).toBe(200);
+    expect(paged.body.data.orders).toHaveLength(2);
+    expect(paged.body.data.pagination).toEqual({ page: 1, limit: 2, total: 3, totalPages: 2 });
+
+    const filtered = await request(app)
+      .get('/api/orders?status=pending')
+      .set('Authorization', `Bearer ${token}`);
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.data.pagination.total).toBe(3);
+    expect(filtered.body.data.orders.every(o => o.status === 'pending')).toBe(true);
+  });
+
+  it('should reject invalid status/page/limit query params', async () => {
+    for (const query of ['?status=unknown', '?page=0', '?limit=-1', '?page=abc']) {
+      const res = await request(app)
+        .get(`/api/orders${query}`)
+        .set('Authorization', `Bearer ${userToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('data', null);
+      expect(res.body).toHaveProperty('error', 'VALIDATION_ERROR');
+    }
+  });
+
+  it('should cap limit at 50', async () => {
+    const res = await request(app)
+      .get('/api/orders?limit=100')
+      .set('Authorization', `Bearer ${userToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.pagination.limit).toBe(50);
   });
 
   it('should get order detail', async () => {

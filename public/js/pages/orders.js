@@ -15,7 +15,9 @@ createApp({
 
     onMounted(async function () {
       try {
-        const res = await apiFetch('/api/orders');
+        // Request the max page size so existing members don't lose visibility into
+        // older orders now that the API defaults to a 10-item page (Issue C).
+        const res = await apiFetch('/api/orders?limit=50');
         orders.value = res.data.orders;
       } catch (e) {
         orders.value = [];

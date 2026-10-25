@@ -6,6 +6,7 @@
 
 ### Added
 - Issue A：結帳優惠碼。新增 `src/utils/coupon.js`（`FLOWER100`/`SPRING10`/`SUMMER50` 規則與折扣計算），`POST /api/orders` 可選填 `couponCode`，訂單新增 `coupon_code`、`discount` 欄位；免運門檻改以折扣後的商品小計判斷。新增 `tests/coupon.test.js` 單元測試，`tests/orders.test.js` 補上建單含優惠碼的整合測試，`tests/acceptance/coupon.test.js` 驗收測試全數通過
+- Issue C：我的訂單篩選與分頁。`GET /api/orders` 新增 `status`／`page`／`limit` query 參數，回應格式比照 `GET /api/admin/orders` 加上 `pagination`（`page`、`limit`、`total`、`totalPages`）；`status`、`page`、`limit` 驗證失敗一律回 400。`tests/orders.test.js` 補上篩選/分頁/無效參數測試，`tests/acceptance/order-filter.test.js` 驗收測試全數通過
 
 ### Changed
 - 抽出 `src/services/orderService.js`（訂單查詢、序列化與建單 transaction）與 `src/services/paymentService.js`（QueryTradeInfo 結果判斷與付款狀態更新）
